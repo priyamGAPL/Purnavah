@@ -100,8 +100,16 @@ body{background:var(--cream);font-family:'Hanken Grotesk',sans-serif;color:var(-
 .order-body-inner{padding:0 20px 20px;border-top:1px solid var(--parchment)}
 
 .body-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:24px;margin-top:16px}
+.body-grid>div{min-width:0}
 @media(max-width:800px){.body-grid{grid-template-columns:1fr}}
 
+/* Table gets its own scroll container — items-table's fixed-width qty/disc
+   inputs give it a min-content width wider than a phone screen. Without this,
+   the grid item's default min-width:auto lets that width blow out the whole
+   .body-grid column (pushing the side panel's totals off-screen too), and
+   order-card's overflow:hidden then clips the table with no way to scroll to
+   the hidden columns. */
+.table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .items-table{width:100%;border-collapse:collapse;font-size:13px}
 .items-table th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--stone);padding:6px 8px;border-bottom:1.5px solid var(--rule)}
 .items-table td{padding:8px;border-bottom:1px solid var(--parchment);vertical-align:middle}
@@ -705,11 +713,13 @@ function renderBody(o) {
     <div class="body-grid">
       <div>
         ${canEditItems ? renderAddItemPanel(o) : ''}
+        <div class="table-scroll">
         <table class="items-table">
           <thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Disc %</th><th style="text-align:right">Line total</th><th>Stock</th><th></th></tr></thead>
           <tbody>${itemsRows}</tbody>
         </table>
-       
+        </div>
+
         ${isLocked ? `<div class="locked-note">Editing locked — order has shipped or later.</div>` : ''}
         ${totals.unknownItems.length ? `<div class="notes-box" style="color:var(--red);border-color:var(--red);margin-top:10px">
           Price not found for: ${totals.unknownItems.map(escapeHtml).join(', ')}. These are excluded from totals below — check the item still exists in the catalog.
@@ -1003,8 +1013,18 @@ function effectiveDiscPct(totals) {
 }
 
 function toggleCard(rowIndex) {
-  expandedRow = expandedRow === rowIndex ? null : rowIndex;
+  const opening = expandedRow !== rowIndex;
+  expandedRow = opening ? rowIndex : null;
   render();
+  // On mobile the expanded body is almost always taller than the viewport —
+  // without this the scroll position stays put and only whatever fits below
+  // the tap point is visible, which reads as the card being "cut off halfway"
+  // rather than as "just scroll down". Scrolling the header to the top of the
+  // viewport maximizes the space below it for the newly revealed content.
+  if (opening) {
+    const head = document.querySelector(`#card-${rowIndex} .order-head`);
+    if (head) head.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 function updateItemQty(rowIndex, name, val) {
