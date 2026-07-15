@@ -99,7 +99,7 @@ body{background:var(--cream);font-family:'Hanken Grotesk',sans-serif;color:var(-
 .order-card.expanded .order-body{max-height:3000px}
 .order-body-inner{padding:0 20px 20px;border-top:1px solid var(--parchment)}
 
-.body-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:24px;margin-top:16px}
+.body-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:24px;margin-top:16px}
 .body-grid>div{min-width:0}
 @media(max-width:800px){.body-grid{grid-template-columns:1fr}}
 
@@ -111,28 +111,28 @@ body{background:var(--cream);font-family:'Hanken Grotesk',sans-serif;color:var(-
    the hidden columns. */
 .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .items-table{width:100%;border-collapse:collapse;font-size:13px}
-.items-table th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--stone);padding:6px 8px;border-bottom:1.5px solid var(--rule)}
-.items-table td{padding:8px;border-bottom:1px solid var(--parchment);vertical-align:middle}
+.items-table th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--stone);padding:6px 6px;border-bottom:1.5px solid var(--rule)}
+.items-table td{padding:6px;border-bottom:1px solid var(--parchment);vertical-align:middle}
 .items-table td.num{text-align:right;font-variant-numeric:tabular-nums}
 .item-name-oos{text-decoration:line-through;color:var(--stone)}
-.qty-input{width:52px;padding:5px 6px;border:1.5px solid var(--parchment);border-radius:5px;text-align:center;font-size:13px;font-family:'Hanken Grotesk',sans-serif}
-.disc-input{width:52px;padding:5px 6px;border:1.5px solid var(--parchment);border-radius:5px;text-align:center;font-size:13px;font-family:'Hanken Grotesk',sans-serif}
-.oos-btn{font-size:11px;color:var(--red);background:none;border:1px solid var(--red);border-radius:4px;padding:3px 8px;cursor:pointer;white-space:nowrap}
+.qty-input{width:42px;padding:4px;border:1.5px solid var(--parchment);border-radius:5px;text-align:center;font-size:13px;font-family:'Hanken Grotesk',sans-serif}
+.disc-input{width:42px;padding:4px;border:1.5px solid var(--parchment);border-radius:5px;text-align:center;font-size:13px;font-family:'Hanken Grotesk',sans-serif}
+.oos-btn{font-size:11px;color:var(--red);background:none;border:1px solid var(--red);border-radius:4px;padding:3px 6px;cursor:pointer;white-space:nowrap}
 .oos-btn.active{background:var(--red);color:#fff}
 .oos-btn:hover{background:var(--red-lt)}
 .oos-btn.active:hover{background:var(--red)}
-.del-item-btn{background:none;border:none;color:var(--stone);cursor:pointer;font-size:14px;padding:2px 8px;border-radius:4px}
+.del-item-btn{background:none;border:none;color:var(--stone);cursor:pointer;font-size:14px;padding:2px 5px;border-radius:4px}
 .del-item-btn:hover{color:var(--red);background:var(--red-lt)}
 
-.side-panel{display:flex;flex-direction:column;gap:14px}
-.panel-section{background:var(--parchment);border-radius:8px;padding:14px 16px}
+.side-panel{display:flex;flex-direction:column;gap:12px}
+.panel-section{background:var(--parchment);border-radius:8px;padding:12px 14px}
 .panel-label{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--stone);margin-bottom:8px}
-.field-row{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.field-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
 .field-row:last-child{margin-bottom:0}
-.field-row label{font-size:12.5px;color:var(--stone);min-width:90px}
-.field-row input,.field-row select{flex:1;padding:7px 10px;border:1.5px solid var(--rule);border-radius:5px;font-size:13px;font-family:'Hanken Grotesk',sans-serif;background:#fff}
+.field-row label{font-size:12.5px;color:var(--stone);min-width:76px}
+.field-row input,.field-row select{flex:1;padding:6px 8px;border:1.5px solid var(--rule);border-radius:5px;font-size:13px;font-family:'Hanken Grotesk',sans-serif;background:#fff}
 .field-row > div{flex:1;font-size:13px;color:var(--ink)}
-.totals-box{background:#fff;border:1px solid var(--rule);border-radius:6px;padding:12px 14px;font-size:13px}
+.totals-box{background:#fff;border:1px solid var(--rule);border-radius:6px;padding:10px 12px;font-size:13px}
 .totals-row{display:flex;justify-content:space-between;padding:4px 0}
 .totals-row.final{font-weight:700;font-size:15px;color:var(--moss);border-top:1px solid var(--parchment);margin-top:6px;padding-top:8px}
 .contact-line{font-size:13px;color:var(--ink);line-height:1.7}
@@ -701,7 +701,7 @@ function renderBody(o) {
           ` : '—'}
         </td>
         <td><button class="oos-btn ${isOos ? 'active' : ''}" ${isLocked ? 'disabled' : ''} onclick="toggleOos(${o.rowIndex}, '${escAttr(name)}')">
-          ${isOos ? 'Out of stock' : 'Mark OOS'}</button></td>
+          ${isOos ? 'OOS ✓' : 'OOS'}</button></td>
         <td>${canEditItems ? `<button class="del-item-btn" title="Remove item" onclick="deleteItem(${o.rowIndex}, '${escAttr(name)}')">✕</button>` : ''}</td>
       </tr>`;
   }).join('');
