@@ -55,6 +55,9 @@ body{background:var(--cream);font-family:'Hanken Grotesk',sans-serif;color:var(-
 .product-info{flex:1}
 .product-name{font-size:13.5px;font-weight:500;color:var(--ink);line-height:1.35;overflow-wrap:break-word}
 .product-meta{font-size:11px;color:var(--stone);margin-top:3px}
+.pack-select{margin-top:5px;width:auto;max-width:100%;font-size:11.5px;font-weight:500;color:var(--ink);padding:5px 24px 5px 8px;border:1.5px solid var(--parchment);border-radius:5px;background-color:#fff;font-family:'Hanken Grotesk',sans-serif;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237A6F61' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;cursor:pointer;transition:border-color .15s}
+.pack-select:focus{outline:none;border-color:var(--moss)}
+.pack-select:hover{border-color:var(--rule)}
 .product-price{font-family:'EB Garamond',serif;font-size:16px;font-weight:500;color:var(--moss);white-space:nowrap}
 .qty-ctrl{display:flex;align-items:center;gap:0;border:1.5px solid var(--rule);border-radius:5px;overflow:hidden;background:#fff;width:100%}
 .qty-ctrl button{width:28px;height:28px;flex-shrink:0;border:none;background:transparent;font-size:16px;font-weight:600;color:var(--moss);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .12s}
@@ -141,7 +144,7 @@ body{background:var(--cream);font-family:'Hanken Grotesk',sans-serif;color:var(-
     <div class="brand">Purnavah</div>
     <div class="brand-sub">Farm · Cold-pressed · Stone-ground</div>
     <div class="header-desc">Organic and natural foods sourced directly from farms. Place your order below and we'll confirm on WhatsApp.</div>
-    <div class="header-badge">Order via WhatsApp</div>
+    
   </div>
 </div>
 
@@ -305,7 +308,9 @@ function computeDeliveryCharge(subtotal) {
 // and Stock > 0 rows only; filtering happens server-side in the Apps Script).
 const CATALOG_API_URL = "https://script.google.com/macros/s/AKfycbyLSm67HoP7wwI-gnfrMhGnwQGvKd9wvvHw5VfeRauhRmSWxDMLJmYJXePmX7Hj3uQjoQ/exec";
 
-let PRODUCTS = []; // [id, gridId, displayName, packSize, mrp, waKey, category]
+let PRODUCTS = []; // [{id, grid, category, displayName, packSize, unit, mrp, waKey}, ...] — one entry per catalog row (one per pack size)
+let PRODUCT_GROUPS = []; // [{groupId, grid, displayName, variants: [product, ...]}, ...] — variants sharing a Display Name are merged into one tile
+const selectedVariant = {}; // groupId -> currently-selected variant's product id (drives which variant the tile's price/qty controls act on)
 const qty = {};
 let appliedCoupon = null; // { code, value } — value is the discount %, validated server-side against the Coupons sheet
 
@@ -327,54 +332,95 @@ function slugify(str) {
   return String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'item';
 }
 
-function toProductTuple(p) {
-  return [slugify(p.productName), 'pg-' + slugify(p.category), p.displayName, p.packSize, Number(p.mrp) || 0, p.waKey, p.category];
+function toProduct(p) {
+  return {
+    id: slugify(p.productName),
+    grid: 'pg-' + slugify(p.category),
+    category: p.category,
+    displayName: p.displayName,
+    packSize: p.packSize,
+    unit: p.unit,
+    mrp: Number(p.mrp) || 0,
+    waKey: p.waKey
+  };
 }
 
 function buildCategorySections() {
   const container = document.getElementById('categoriesContainer');
   container.innerHTML = '';
   const seen = new Set();
-  PRODUCTS.forEach(([, grid, , , , , category]) => {
-    if (seen.has(grid)) return;
-    seen.add(grid);
+  PRODUCTS.forEach(p => {
+    if (seen.has(p.grid)) return;
+    seen.add(p.grid);
     const label = document.createElement('div');
     label.className = 'category-label';
-    label.textContent = CATEGORY_LABELS[category] || category;
+    label.textContent = CATEGORY_LABELS[p.category] || p.category;
     container.appendChild(label);
     const gridEl = document.createElement('div');
     gridEl.className = 'product-grid';
-    gridEl.id = grid;
+    gridEl.id = p.grid;
     container.appendChild(gridEl);
   });
 }
 
-// Build product rows
+// Products sharing the same Display Name (typically the same item in
+// different pack sizes) are folded into a single tile with a pack-size
+// dropdown, instead of one tile per catalog row.
+function groupProductVariants() {
+  const groups = new Map();
+  PRODUCTS.forEach(p => {
+    // Collapse repeated whitespace before matching — the Catalog sheet has
+    // occasional double-space typos between pack-size rows of the same
+    // product (e.g. "Red Rajma  - Organic" vs "Red Rajma - Organic") that
+    // would otherwise split one product into two tiles.
+    const key = p.grid + '::' + p.displayName.trim().replace(/\s+/g, ' ');
+    if (!groups.has(key)) {
+      groups.set(key, { groupId: slugify(key), grid: p.grid, displayName: p.displayName, variants: [] });
+    }
+    groups.get(key).variants.push(p);
+  });
+  return Array.from(groups.values());
+}
+
+// Build product rows — one per Display Name group, with a pack-size
+// selector when a group has more than one variant.
 function renderProductGrid() {
   buildCategorySections();
-  PRODUCTS.forEach(([id, grid, name, unit, price]) => {
-    qty[id] = 0;
-    const container = document.getElementById(grid);
+  PRODUCTS.forEach(p => { qty[p.id] = 0; });
+  PRODUCT_GROUPS = groupProductVariants();
+
+  PRODUCT_GROUPS.forEach(group => {
+    const gid = group.groupId;
+    selectedVariant[gid] = group.variants[0].id;
+    const container = document.getElementById(group.grid);
     const row = document.createElement('div');
     row.className = 'product-row';
-    row.id = 'row-' + id;
+    row.id = 'row-' + gid;
+
+    const packControl = group.variants.length > 1
+      ? `<select class="pack-select" id="pack-${gid}" onchange="selectVariant('${gid}', this.value)" aria-label="Pack size for ${group.displayName}">
+          ${group.variants.map(v => `<option value="${v.id}">${v.packSize || v.unit}</option>`).join('')}
+        </select>`
+      : `<div class="product-meta">${group.variants[0].packSize || group.variants[0].unit}</div>`;
+
     row.innerHTML = `
       <div class="product-info">
-        <div class="product-name">${name}</div>
-        <div class="product-meta">${unit}</div>
+        <div class="product-name">${group.displayName}</div>
+        ${packControl}
       </div>
       <div class="product-price-block">
-        <div class="product-price"><span class="mrp-label">MRP</span>₹${price.toLocaleString('en-IN')}</div>
-        <div class="product-subtotal" id="sub-${id}"></div>
+        <div class="product-price"><span class="mrp-label">MRP</span><span id="price-${gid}"></span></div>
+        <div class="product-subtotal" id="sub-${gid}"></div>
       </div>
       <div class="qty-ctrl">
-        <button type="button" onclick="changeQty('${id}',-1)" aria-label="Decrease">−</button>
-        <input type="number" id="qty-${id}" value="0" min="0" max="99"
-          oninput="setQty('${id}',this.value)" aria-label="Quantity for ${name}">
-        <button type="button" onclick="changeQty('${id}',1)" aria-label="Increase">+</button>
+        <button type="button" onclick="changeQty('${gid}',-1)" aria-label="Decrease">−</button>
+        <input type="number" id="qty-${gid}" value="0" min="0" max="99"
+          oninput="setQty('${gid}',this.value)" aria-label="Quantity for ${group.displayName}">
+        <button type="button" onclick="changeQty('${gid}',1)" aria-label="Increase">+</button>
       </div>
     `;
     container.appendChild(row);
+    updateVariantDisplay(gid);
   });
 }
 
@@ -385,7 +431,7 @@ async function loadCatalog() {
     const data = await res.json();
     if (data.status !== 'ok') throw new Error(data.message || 'Unexpected response');
 
-    PRODUCTS = data.data.map(toProductTuple);
+    PRODUCTS = data.data.map(toProduct);
     if (PRODUCTS.length === 0) {
       statusEl.textContent = 'No products available right now — please check back soon.';
       return;
@@ -401,31 +447,42 @@ async function loadCatalog() {
 
 loadCatalog();
 
-function changeQty(id, delta) {
-  const input = document.getElementById('qty-' + id);
-  const newVal = Math.max(0, (qty[id] || 0) + delta);
-  qty[id] = newVal;
-  input.value = newVal;
-  updateRow(id);
+// Quantity is tracked per variant (so switching the pack-size dropdown never
+// loses a quantity already entered against a different pack size); the
+// group's tile controls always read/write whichever variant is currently
+// selected for that group.
+function changeQty(gid, delta) {
+  const variantId = selectedVariant[gid];
+  qty[variantId] = Math.max(0, (qty[variantId] || 0) + delta);
+  updateVariantDisplay(gid);
   updateSummary();
 }
 
-function setQty(id, val) {
-  qty[id] = Math.max(0, parseInt(val) || 0);
-  document.getElementById('qty-' + id).value = qty[id];
-  updateRow(id);
+function setQty(gid, val) {
+  const variantId = selectedVariant[gid];
+  qty[variantId] = Math.max(0, parseInt(val) || 0);
+  updateVariantDisplay(gid);
   updateSummary();
 }
 
-function updateRow(id) {
-  const row = document.getElementById('row-' + id);
-  const q = qty[id];
+function selectVariant(gid, variantId) {
+  selectedVariant[gid] = variantId;
+  updateVariantDisplay(gid);
+}
+
+function updateVariantDisplay(gid) {
+  const variantId = selectedVariant[gid];
+  const prod = PRODUCTS.find(p => p.id === variantId);
+  if (!prod) return;
+  document.getElementById('price-' + gid).textContent = '₹' + prod.mrp.toLocaleString('en-IN');
+  document.getElementById('qty-' + gid).value = qty[variantId] || 0;
+
+  const row = document.getElementById('row-' + gid);
+  const q = qty[variantId] || 0;
   row.classList.toggle('has-qty', q > 0);
-  const prod = PRODUCTS.find(p => p[0] === id);
-  const subEl = document.getElementById('sub-' + id);
-  if (q > 0 && prod) {
-    const sub = q * prod[4];
-    subEl.textContent = '= ₹' + sub.toLocaleString('en-IN');
+  const subEl = document.getElementById('sub-' + gid);
+  if (q > 0) {
+    subEl.textContent = '= ₹' + (q * prod.mrp).toLocaleString('en-IN');
     subEl.style.display = 'block';
   } else {
     subEl.style.display = 'none';
@@ -453,7 +510,7 @@ function estimateWeightKg(packSize) {
 }
 
 function updateSummary() {
-  const items = PRODUCTS.filter(p => qty[p[0]] > 0);
+  const items = PRODUCTS.filter(p => qty[p.id] > 0);
   const container = document.getElementById('summaryItems');
   const totalEl = document.getElementById('summaryTotal');
   const weightEl = document.getElementById('summaryWeight');
@@ -468,13 +525,13 @@ function updateSummary() {
   let total = 0;
   let totalWeight = 0;
   let html = '';
-  items.forEach(([id, , name, unit, price]) => {
-    const q = qty[id];
-    const subtotal = q * price;
+  items.forEach(p => {
+    const q = qty[p.id];
+    const subtotal = q * p.mrp;
     total += subtotal;
-    totalWeight += q * estimateWeightKg(unit);
+    totalWeight += q * estimateWeightKg(p.packSize);
     html += `<div class="summary-item">
-      <span class="summary-item-name">${name} <span style="color:var(--stone);font-size:12px">${unit} × ${q}</span></span>
+      <span class="summary-item-name">${p.displayName} <span style="color:var(--stone);font-size:12px">${p.packSize || p.unit} × ${q}</span></span>
       <span class="summary-item-val">₹${subtotal.toLocaleString('en-IN')}</span>
     </div>`;
   });
@@ -564,7 +621,7 @@ function sendWhatsApp() {
   errEl.style.display = 'none';
 
   // Validate
-  const items = PRODUCTS.filter(p => qty[p[0]] > 0);
+  const items = PRODUCTS.filter(p => qty[p.id] > 0);
   if (items.length === 0)  { showError('Please select at least one product.'); return; }
   if (!name)               { showError('Please enter your name.'); document.getElementById('fname').focus(); return; }
   if (!/^\d{10}$/.test(phone)) { showError('Please enter a valid 10-digit phone number.'); document.getElementById('fphone').focus(); return; }
@@ -583,11 +640,11 @@ function sendWhatsApp() {
   // Build message
   let total = 0;
   let orderLines = '';
-  items.forEach(([id, , name, unit, price]) => {
-    const q = qty[id];
-    const sub = q * price;
+  items.forEach(p => {
+    const q = qty[p.id];
+    const sub = q * p.mrp;
     total += sub;
-    orderLines += `• ${name} (${unit}) × ${q} = ₹${sub.toLocaleString('en-IN')}\n`;
+    orderLines += `• ${p.displayName} (${p.packSize || p.unit}) × ${q} = ₹${sub.toLocaleString('en-IN')}\n`;
   });
 
   let couponLine = '';
@@ -642,8 +699,8 @@ Address: ${address}${notes ? `\nNotes: ${notes}` : ''}`;
 
   // Build items object: WA display key → quantity (waKey comes straight
   // from the Catalog sheet, so it always matches what the admin backend expects)
-  items.forEach(([id,, , , , waKey]) => {
-    orderPayload.items[waKey] = qty[id];
+  items.forEach(p => {
+    orderPayload.items[p.waKey] = qty[p.id];
   });
 
   // Fire and forget — never blocks WhatsApp send even if Sheets fails
@@ -668,11 +725,13 @@ Address: ${address}${notes ? `\nNotes: ${notes}` : ''}`;
 }
 
 function resetForm() {
-  PRODUCTS.forEach(([id]) => {
-    qty[id] = 0;
-    const input = document.getElementById('qty-' + id);
-    if (input) input.value = 0;
-    updateRow(id);
+  PRODUCTS.forEach(p => { qty[p.id] = 0; });
+  PRODUCT_GROUPS.forEach(group => {
+    const gid = group.groupId;
+    selectedVariant[gid] = group.variants[0].id;
+    const select = document.getElementById('pack-' + gid);
+    if (select) select.value = group.variants[0].id;
+    updateVariantDisplay(gid);
   });
   ['fname','fphone','femail','fpincode','fstate','faddress','fnotes'].forEach(id => {
     document.getElementById(id).value = '';
